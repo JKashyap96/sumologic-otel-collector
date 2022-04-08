@@ -34,7 +34,7 @@ var (
 	tagPolicyKey, _                  = tag.NewKey("policy")
 	tagCascadingFilterDecisionKey, _ = tag.NewKey("cascading_filter_decision")
 	tagPolicyDecisionKey, _          = tag.NewKey("policy_decision")
-	tagInstanceName, _               = tag.NewKey("instance_name")
+	tagProcessorKey, _               = tag.NewKey("processor")
 
 	statDecisionLatencyMicroSec  = stats.Int64("policy_decision_latency", "Latency (in microseconds) of a given filtering policy", "µs")
 	statOverallDecisionLatencyus = stats.Int64("cascading_filtering_batch_processing_latency", "Latency (in microseconds) of each run of the cascading filter timer", "µs")
@@ -65,7 +65,7 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statOverallDecisionLatencyus.Name(),
 		Measure:     statOverallDecisionLatencyus,
 		Description: statOverallDecisionLatencyus.Description(),
-		TagKeys:     []tag.Key{tagInstanceName},
+		TagKeys:     []tag.Key{tagProcessorKey},
 		Aggregation: latencyDistributionAggregation,
 	}
 
@@ -73,7 +73,7 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statTraceRemovalAgeSec.Name(),
 		Measure:     statTraceRemovalAgeSec,
 		Description: statTraceRemovalAgeSec.Description(),
-		TagKeys:     []tag.Key{tagInstanceName},
+		TagKeys:     []tag.Key{tagProcessorKey},
 		Aggregation: ageDistributionAggregation,
 	}
 
@@ -81,7 +81,7 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statLateSpanArrivalAfterDecision.Name(),
 		Measure:     statLateSpanArrivalAfterDecision,
 		Description: statLateSpanArrivalAfterDecision.Description(),
-		TagKeys:     []tag.Key{tagInstanceName},
+		TagKeys:     []tag.Key{tagProcessorKey},
 		Aggregation: ageDistributionAggregation,
 	}
 
@@ -89,7 +89,7 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statPolicyEvaluationErrorCount.Name(),
 		Measure:     statPolicyEvaluationErrorCount,
 		Description: statPolicyEvaluationErrorCount.Description(),
-		TagKeys:     []tag.Key{tagInstanceName},
+		TagKeys:     []tag.Key{tagProcessorKey},
 		Aggregation: view.Sum(),
 	}
 
@@ -97,7 +97,7 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statCascadingFilterDecision.Name(),
 		Measure:     statCascadingFilterDecision,
 		Description: statCascadingFilterDecision.Description(),
-		TagKeys:     []tag.Key{tagInstanceName, tagPolicyKey, tagCascadingFilterDecisionKey},
+		TagKeys:     []tag.Key{tagProcessorKey, tagPolicyKey, tagCascadingFilterDecisionKey},
 		Aggregation: view.Sum(),
 	}
 
@@ -105,7 +105,7 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statPolicyDecision.Name(),
 		Measure:     statPolicyDecision,
 		Description: statPolicyDecision.Description(),
-		TagKeys:     []tag.Key{tagInstanceName, tagPolicyKey, tagPolicyDecisionKey},
+		TagKeys:     []tag.Key{tagProcessorKey, tagPolicyKey, tagPolicyDecisionKey},
 		Aggregation: view.Sum(),
 	}
 
@@ -113,7 +113,7 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statDecisionLatencyMicroSec.Name(),
 		Measure:     statDecisionLatencyMicroSec,
 		Description: statDecisionLatencyMicroSec.Description(),
-		TagKeys:     []tag.Key{tagInstanceName, tagPolicyKey},
+		TagKeys:     []tag.Key{tagProcessorKey, tagPolicyKey},
 		Aggregation: view.Sum(),
 	}
 
@@ -121,21 +121,21 @@ func CascadingFilterMetricViews(level configtelemetry.Level) []*view.View {
 		Name:        statDroppedTooEarlyCount.Name(),
 		Measure:     statDroppedTooEarlyCount,
 		Description: statDroppedTooEarlyCount.Description(),
-		TagKeys:     []tag.Key{tagInstanceName},
+		TagKeys:     []tag.Key{tagProcessorKey},
 		Aggregation: view.Sum(),
 	}
 	countTraceIDArrivalView := &view.View{
 		Name:        statNewTraceIDReceivedCount.Name(),
 		Measure:     statNewTraceIDReceivedCount,
 		Description: statNewTraceIDReceivedCount.Description(),
-		TagKeys:     []tag.Key{tagInstanceName},
+		TagKeys:     []tag.Key{tagProcessorKey},
 		Aggregation: view.Sum(),
 	}
 	trackTracesOnMemorylView := &view.View{
 		Name:        statTracesOnMemoryGauge.Name(),
 		Measure:     statTracesOnMemoryGauge,
 		Description: statTracesOnMemoryGauge.Description(),
-		TagKeys:     []tag.Key{tagInstanceName},
+		TagKeys:     []tag.Key{tagProcessorKey},
 		Aggregation: view.LastValue(),
 	}
 
