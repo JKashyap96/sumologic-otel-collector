@@ -16,6 +16,7 @@ package rawk8seventsreceiver
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
@@ -24,7 +25,7 @@ import (
 
 const (
 	// Value of "type" key in configuration.
-	typeStr = "rawk8sevents"
+	typeStr = "raw_k8s_events"
 )
 
 // NewFactory creates a factory for rawk8sevents receiver.
@@ -41,7 +42,10 @@ func createDefaultConfig() config.Receiver {
 		APIConfig: APIConfig{
 			AuthType: AuthTypeServiceAccount,
 		},
-		makeClient: MakeClient,
+		Namespaces:        []string{},
+		MaxEventAge:       time.Minute,
+		ConsumeMaxRetries: 20,
+		ConsumeRetryDelay: time.Millisecond * 500,
 	}
 }
 
@@ -53,7 +57,7 @@ func createLogsReceiver(
 ) (component.LogsReceiver, error) {
 	rCfg := cfg.(*Config)
 
-	k8sInterface, err := rCfg.makeClient(rCfg.APIConfig)
+	k8sInterface, err := MakeClient(rCfg.APIConfig)
 	if err != nil {
 		return nil, err
 	}

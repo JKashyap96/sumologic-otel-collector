@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/config"
-	k8s "k8s.io/client-go/kubernetes"
 )
 
 // Config defines configuration for the receiver.
@@ -26,10 +25,12 @@ type Config struct {
 	config.ReceiverSettings `mapstructure:",squash"`
 	APIConfig               `mapstructure:",squash"`
 	// List of ‘namespaces’ to collect events from.
+	// Empty list means all namespaces
 	Namespaces []string `mapstructure:"namespaces"`
 
-	// For mocking
-	makeClient func(apiConf APIConfig) (k8s.Interface, error)
+	// Maximum age of event relative to receiver start time
+	// Events older than StartTime - MaxEventAge will not be collected
+	MaxEventAge time.Duration `mapstructure:"max_event_age"`
 
 	// ConsumeRetryDelay is the retry delay for recoverable pipeline errors
 	// one frequent source of these kinds of errors is the memory_limiter processor

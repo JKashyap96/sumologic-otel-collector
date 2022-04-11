@@ -47,6 +47,7 @@ type rawK8sEventsReceiver struct {
 	eventCh          chan *corev1.Event
 	ctx              context.Context
 	cancel           context.CancelFunc
+	startTime        time.Time
 
 	consumer consumer.Logs
 	logger   *zap.Logger
@@ -108,6 +109,7 @@ func newRawK8sEventsReceiver(
 		eventCh:          eventCh,
 		consumer:         consumer,
 		logger:           params.Logger,
+		startTime:        time.Now(),
 	}
 	return receiver, nil
 }
@@ -170,8 +172,20 @@ func (r *rawK8sEventsReceiver) processEventLoop() {
 }
 
 func (r *rawK8sEventsReceiver) processEvent(ctx context.Context, event *corev1.Event) {
-	logs := r.convertToLog(event)
-	r.consumeWithRetry(ctx, logs)
+	if r.isEventAccepted(event) {
+		logs := r.convertToLog(event)
+		err := r.consumeWithRetry(ctx, logs)
+		if err != nil {
+			r.logger.Error("ConsumeMetrics() error",
+				zap.String("error", err.Error()),
+			)
+		}
+	}
+}
+
+func (r *rawK8sEventsReceiver) isEventAccepted(event *corev1.Event) bool {
+	eventTime := getEventTimestamp(event)
+	return eventTime.After(r.startTime.Add(-r.cfg.MaxEventAge))
 }
 
 func (r *rawK8sEventsReceiver) convertToLog(event *corev1.Event) pdata.Logs {
