@@ -47,6 +47,8 @@ type sumologicexporter struct {
 	clientLock sync.RWMutex
 	client     *http.Client
 
+	compressorPool sync.Pool
+
 	filter              filter
 	prometheusFormatter prometheusFormatter
 	graphiteFormatter   graphiteFormatter
@@ -90,6 +92,15 @@ func initExporter(cfg *Config, createSettings component.ExporterCreateSettings) 
 		config:  cfg,
 		logger:  createSettings.Logger,
 		sources: sfs,
+		compressorPool: sync.Pool{
+			New: func() any {
+				c, err := newCompressor(cfg.CompressEncoding)
+				if err != nil {
+					return fmt.Errorf("failed to initialize compressor: %w", err)
+				}
+				return c
+			},
+		},
 		// NOTE: client is now set in start()
 		filter:              f,
 		prometheusFormatter: pf,
@@ -213,18 +224,11 @@ func newTracesExporter(
 // It returns the number of unsent logs and an error which contains a list of dropped records
 // so they can be handled by OTC retry mechanism
 func (se *sumologicexporter) pushLogsData(ctx context.Context, ld pdata.Logs) error {
-	var (
-		currentMetadata  fields = newFields(pdata.NewAttributeMap())
-		previousMetadata fields = newFields(pdata.NewAttributeMap())
-		errs             []error
-		droppedRecords   []logPair
-		err              error
-	)
-
-	c, err := newCompressor(se.config.CompressEncoding)
+	compr, err := se.getCompressor()
 	if err != nil {
-		return consumererror.NewLogs(fmt.Errorf("failed to initialize compressor: %w", err), ld)
+		return consumererror.NewLogs(err, ld)
 	}
+	defer se.compressorPool.Put(compr)
 
 	logsUrl, metricsUrl, tracesUrl := se.getDataURLs()
 	sdr := newSender(
@@ -233,7 +237,7 @@ func (se *sumologicexporter) pushLogsData(ctx context.Context, ld pdata.Logs) er
 		se.getHTTPClient(),
 		se.filter,
 		se.sources,
-		c,
+		compr,
 		se.prometheusFormatter,
 		se.graphiteFormatter,
 		metricsUrl,
@@ -241,10 +245,29 @@ func (se *sumologicexporter) pushLogsData(ctx context.Context, ld pdata.Logs) er
 		tracesUrl,
 	)
 
+	// Follow different execution path for OTLP format
+	if sdr.config.LogFormat == OTLPLogFormat {
+		if err := sdr.sendOTLPLogs(ctx, ld); err != nil {
+			se.handleUnauthorizedErrors(ctx, err)
+			return consumererror.NewLogs(err, ld)
+		}
+		return nil
+	}
+
+	var (
+		currentMetadata  fields = newFields(pdata.NewAttributeMap())
+		previousMetadata fields = newFields(pdata.NewAttributeMap())
+		errs             []error
+		droppedRecords   []logPair
+	)
+
 	// Iterate over ResourceLogs
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
 		rl := rls.At(i)
+
+		// drop routing attribute
+		se.dropRoutingAttribute(rl.Resource().Attributes())
 
 		ills := rl.InstrumentationLibraryLogs()
 		// iterate over InstrumentationLibraryLogs
@@ -284,7 +307,7 @@ func (se *sumologicexporter) pushLogsData(ctx context.Context, ld pdata.Logs) er
 				// If metadata differs from currently buffered, flush the buffer
 				if !currentMetadata.equals(previousMetadata) && !previousMetadata.isEmpty() {
 					var dropped []logPair
-					dropped, err = sdr.sendLogs(ctx, previousMetadata)
+					dropped, err = sdr.sendNonOTLPLogs(ctx, previousMetadata)
 					if err != nil {
 						errs = append(errs, err)
 						droppedRecords = append(droppedRecords, dropped...)
@@ -307,7 +330,7 @@ func (se *sumologicexporter) pushLogsData(ctx context.Context, ld pdata.Logs) er
 	}
 
 	// Flush pending logs
-	dropped, err := sdr.sendLogs(ctx, previousMetadata)
+	dropped, err := sdr.sendNonOTLPLogs(ctx, previousMetadata)
 	if err != nil {
 		droppedRecords = append(droppedRecords, dropped...)
 		errs = append(errs, err)
@@ -337,18 +360,11 @@ func (se *sumologicexporter) pushLogsData(ctx context.Context, ld pdata.Logs) er
 // it returns number of unsent metrics and error which contains list of dropped records
 // so they can be handle by the OTC retry mechanism
 func (se *sumologicexporter) pushMetricsData(ctx context.Context, md pdata.Metrics) error {
-	var (
-		currentMetadata  fields = newFields(pdata.NewAttributeMap())
-		previousMetadata fields = newFields(pdata.NewAttributeMap())
-		errs             []error
-		droppedRecords   []metricPair
-		attributes       pdata.AttributeMap
-	)
-
-	c, err := newCompressor(se.config.CompressEncoding)
+	compr, err := se.getCompressor()
 	if err != nil {
-		return consumererror.NewMetrics(fmt.Errorf("failed to initialize compressor: %w", err), md)
+		return consumererror.NewMetrics(err, md)
 	}
+	defer se.compressorPool.Put(compr)
 
 	logsUrl, metricsUrl, tracesUrl := se.getDataURLs()
 	sdr := newSender(
@@ -357,7 +373,7 @@ func (se *sumologicexporter) pushMetricsData(ctx context.Context, md pdata.Metri
 		se.getHTTPClient(),
 		se.filter,
 		se.sources,
-		c,
+		compr,
 		se.prometheusFormatter,
 		se.graphiteFormatter,
 		metricsUrl,
@@ -365,12 +381,32 @@ func (se *sumologicexporter) pushMetricsData(ctx context.Context, md pdata.Metri
 		tracesUrl,
 	)
 
+	// Follow different execution path for OTLP format
+	if sdr.config.MetricFormat == OTLPMetricFormat {
+		if err := sdr.sendOTLPMetrics(ctx, md); err != nil {
+			se.handleUnauthorizedErrors(ctx, err)
+			return consumererror.NewMetrics(err, md)
+		}
+		return nil
+	}
+
+	var (
+		currentMetadata  fields = newFields(pdata.NewAttributeMap())
+		previousMetadata fields = newFields(pdata.NewAttributeMap())
+		errs             []error
+		droppedRecords   []metricPair
+	)
+
 	// Iterate over ResourceMetrics
 	rms := md.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
 		rm := rms.At(i)
 
-		attributes = rm.Resource().Attributes()
+		attributes := rm.Resource().Attributes()
+
+		// drop routing attribute
+		se.dropRoutingAttribute(attributes)
+
 		currentMetadata = sdr.filter.filterIn(attributes)
 
 		if se.config.TranslateAttributes {
@@ -400,7 +436,8 @@ func (se *sumologicexporter) pushMetricsData(ctx context.Context, md pdata.Metri
 				// If metadata differs from currently buffered, flush the buffer
 				if !currentMetadata.equals(previousMetadata) && !previousMetadata.isEmpty() {
 					var dropped []metricPair
-					dropped, err = sdr.sendMetrics(ctx, previousMetadata)
+					var err error
+					dropped, err = sdr.sendNonOTLPMetrics(ctx, previousMetadata)
 					if err != nil {
 						errs = append(errs, err)
 						droppedRecords = append(droppedRecords, dropped...)
@@ -411,6 +448,7 @@ func (se *sumologicexporter) pushMetricsData(ctx context.Context, md pdata.Metri
 				// assign metadata
 				previousMetadata = currentMetadata
 				var dropped []metricPair
+				var err error
 				// add metric to the buffer
 				dropped, err = sdr.batchMetric(ctx, mp, currentMetadata)
 				if err != nil {
@@ -422,7 +460,7 @@ func (se *sumologicexporter) pushMetricsData(ctx context.Context, md pdata.Metri
 	}
 
 	// Flush pending metrics
-	dropped, err := sdr.sendMetrics(ctx, previousMetadata)
+	dropped, err := sdr.sendNonOTLPMetrics(ctx, previousMetadata)
 	if err != nil {
 		droppedRecords = append(droppedRecords, dropped...)
 		errs = append(errs, err)
@@ -468,11 +506,11 @@ func (se *sumologicexporter) handleUnauthorizedErrors(ctx context.Context, errs 
 }
 
 func (se *sumologicexporter) pushTracesData(ctx context.Context, td pdata.Traces) error {
-	var currentMetadata fields = newFields(pdata.NewAttributeMap())
-	c, err := newCompressor(se.config.CompressEncoding)
+	compr, err := se.getCompressor()
 	if err != nil {
-		return consumererror.NewTraces(fmt.Errorf("failed to initialize compressor: %w", err), td)
+		return consumererror.NewTraces(err, td)
 	}
+	defer se.compressorPool.Put(compr)
 
 	logsUrl, metricsUrl, tracesUrl := se.getDataURLs()
 	sdr := newSender(
@@ -481,20 +519,34 @@ func (se *sumologicexporter) pushTracesData(ctx context.Context, td pdata.Traces
 		se.getHTTPClient(),
 		se.filter,
 		se.sources,
-		c,
+		compr,
 		se.prometheusFormatter,
 		se.graphiteFormatter,
 		metricsUrl,
 		logsUrl,
 		tracesUrl,
 	)
-	err = sdr.sendTraces(ctx, td, currentMetadata)
-	se.handleUnauthorizedErrors(ctx, err)
-	if err != nil {
-		return err
+
+	// Drop routing attribute from ResourceSpans
+	rss := td.ResourceSpans()
+	for i := 0; i < rss.Len(); i++ {
+		se.dropRoutingAttribute(rss.At(i).Resource().Attributes())
 	}
 
-	return nil
+	err = sdr.sendTraces(ctx, td)
+	se.handleUnauthorizedErrors(ctx, err)
+	return err
+}
+
+func (se *sumologicexporter) getCompressor() (compressor, error) {
+	switch c := se.compressorPool.Get().(type) {
+	case error:
+		return compressor{}, fmt.Errorf("%v", c)
+	case compressor:
+		return c, nil
+	default:
+		return compressor{}, fmt.Errorf("unknown compressor type: %T", c)
+	}
 }
 
 func (se *sumologicexporter) start(ctx context.Context, host component.Host) error {
@@ -596,4 +648,8 @@ func (se *sumologicexporter) getDataURLs() (logs, metrics, traces string) {
 
 func (se *sumologicexporter) shutdown(context.Context) error {
 	return nil
+}
+
+func (se *sumologicexporter) dropRoutingAttribute(attr pdata.AttributeMap) {
+	attr.Delete(se.config.DropRoutingAttribute)
 }

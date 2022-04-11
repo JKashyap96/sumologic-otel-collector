@@ -28,7 +28,7 @@ func TestSanitizeKey(t *testing.T) {
 
 	key := "&^*123-abc-ABC!./?_:\n\r"
 	expected := "___123-abc-ABC_./__:__"
-	assert.Equal(t, expected, f.sanitizeKey(key))
+	assert.EqualValues(t, expected, f.sanitizeKeyBytes([]byte(key)))
 }
 
 func TestSanitizeValue(t *testing.T) {
@@ -154,4 +154,67 @@ histogram_metric_double_test{bar="foo",le="+Inf",container="sit",branch="main"} 
 histogram_metric_double_test_sum{bar="foo",container="sit",branch="main"} 54.1 1608424699186
 histogram_metric_double_test_count{bar="foo",container="sit",branch="main"} 98 1608424699186`
 	assert.Equal(t, expected, result)
+}
+
+func TestPrometheusMetrics(t *testing.T) {
+	type testCase struct {
+		name     string
+		metric   metricPair
+		expected string
+	}
+
+	tests := []testCase{
+		{
+			name:     "empty int gauge",
+			metric:   buildExampleIntGaugeMetric(false),
+			expected: "",
+		},
+		{
+			name:     "empty double gauge",
+			metric:   buildExampleDoubleGaugeMetric(false),
+			expected: "",
+		},
+		{
+			name:     "empty int sum",
+			metric:   buildExampleIntSumMetric(false),
+			expected: "",
+		},
+		{
+			name:     "empty double sum",
+			metric:   buildExampleDoubleSumMetric(false),
+			expected: "",
+		},
+		{
+			name:     "empty summary",
+			metric:   buildExampleSummaryMetric(false),
+			expected: "",
+		},
+		{
+			name:     "empty histogram",
+			metric:   buildExampleHistogramMetric(false),
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, err := newPrometheusFormatter()
+			require.NoError(t, err)
+
+			result := f.metric2String(tt.metric)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Benchmark_PrometheusFormatter_Metric2String(b *testing.B) {
+	f, err := newPrometheusFormatter()
+	require.NoError(b, err)
+
+	metric := buildExampleHistogramMetric(true)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = f.metric2String(metric)
+	}
 }

@@ -119,7 +119,7 @@ jobs:
 
       - name: Setup go
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: '1.18'
 
@@ -167,7 +167,7 @@ jobs:
 
       - name: Setup go
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: '1.18'
 
@@ -237,7 +237,7 @@ jobs:
 
       - name: Setup go
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: '1.18'
 
@@ -284,7 +284,7 @@ jobs:
 
       - name: Store binary as action artifact
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: otelcol-sumo-${{matrix.arch_os}}
           path: ./otelcolbuilder/cmd/otelcol-sumo-${{matrix.arch_os}}
@@ -328,7 +328,7 @@ jobs:
 
       - name: Download binary action artifact from build phase
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: otelcol-sumo-${{matrix.arch_os}}
           path: artifacts/

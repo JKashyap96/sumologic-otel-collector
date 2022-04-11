@@ -58,6 +58,13 @@ exporters:
     # source templating is going to be applied,
     # default = `%{_metric_}`
     graphite_template: <graphite_template>
+    # name of resource attribute which should be dropped for records
+    # this is for attribute used by routing processor
+    # other attributes should be removed by processors in pipelines before
+    # This is workaround for the following issue:
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/7407
+    # default = ``
+    routing_atttribute_to_drop: <routing_atttribute_to_drop>
 
     json_logs:
       # defines which key will be used to attach the log body at.
@@ -94,6 +101,8 @@ exporters:
     # list of regexes for attributes which should be sent as metadata,
     # use OpenTelemetry attribute names, see "Attribute translation" documentation
     # chapter from this document.
+    #
+    # NOTE: Those apply only to non-OTLP data formats.
     metadata_attributes:
       - <regex1>
       - <regex2>
@@ -186,8 +195,8 @@ Below is a list of all attribute keys that are being translated.
 
 > **IMPORTANT NOTE**:
 >
-> When using non-`OTLP` based format (e.g. `JSON` for logs) metadata attributes
-> used in source templates have to have a regex defined in
+> The metadata attributes
+> used in source templates must have a regex defined in
 > `metadata_attributes` that would match them.
 >
 > Otherwise the attributes will not be available during source templates rendering.
@@ -202,7 +211,7 @@ Below is a list of all attribute keys that are being translated.
 >   - some_other_metadata_regex.*
 > ```
 >
-> While is **not**:
+> While this is **not**:
 >
 > ```yaml
 > source_name: "%{k8s.namespace.name}.%{k8s.pod.name}.%{k8s.container.name}"
@@ -214,25 +223,21 @@ Below is a list of all attribute keys that are being translated.
 >   - some_other_metadata_regex.*
 > ```
 >
-> At the same time source related metadata attributes, i.e.:
+> This does not apply to the source metadata attributes, i.e.:
 >
 > - `_sourceCategory`
 > - `_sourceHost`
 > - `_sourceName`
 >
-> are always available in the templates (when a corresponding resource attribute
-> is set for processed entry) but are **never** sent to Sumo Logic.
->
-> In order to set those metadata attributes use `source_category`, `source_host`
-> and `source_name` configuration option which will set the corresponding
-> `X-Sumo-...` HTTP header.
+> These attributes are always available in the templates.
 
 You can specify a template with an attribute for `source_category`, `source_name`,
 `source_host` or `graphite_template` using `%{attr_name}`.
 
 For example, when there is an attribute `my_attr`: `my_value`, `metrics/%{my_attr}`
 would be expanded to `metrics/my_value`.
-Use OpenTelemetry attribute names, even when [attribute translation](#attribute-translation)
+Use OpenTelemetry attribute names like `k8s.pod.name` instead of `pod`,
+even when [attribute translation](#attribute-translation)
 is turned on.
 
 For `graphite_template`, in addition to above, `%{_metric_}` is going to be replaced
@@ -240,6 +245,22 @@ with metric name.
 
 If an attribute is not found, it is replaced with `undefined`.
 For example, `%{existing_attr}/%{nonexistent_attr}` becomes `value-of-existing-attr/undefined`.
+
+## Metrics
+
+The Sumo Logic Exporter exposes the following metrics:
+
+- `otelcol_exporter_requests_bytes` (`counter`) - total size of HTTP requests (in bytes)
+- `otelcol_exporter_requests_duration` (`counter`) - duration of HTTP requests (in milliseconds)
+- `otelcol_exporter_requests_records` (`counter`) - total size of HTTP requests (in number of records)
+- `otelcol_exporter_requests_sent` (`counter`) - number of HTTP requests
+
+All of the above metrics have the following dimensions:
+
+- `endpoint` - endpoint address
+- `exporter` - exporter name
+- `pipeline` - pipeline name (`logs`, `metrics` or `traces`)
+- `status_code` - HTTP response status code (`0` in case of error)
 
 ## Example Configuration
 

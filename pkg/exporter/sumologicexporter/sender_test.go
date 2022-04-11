@@ -186,6 +186,16 @@ func exampleLog() []pdata.LogRecord {
 	return buffer
 }
 
+func exampleNLogs(n int) []pdata.LogRecord {
+	buffer := make([]pdata.LogRecord, n)
+	for i := 0; i < n; i++ {
+		buffer[i] = pdata.NewLogRecord()
+		buffer[i].Body().SetStringVal("Example log")
+	}
+
+	return buffer
+}
+
 func exampleTwoLogs() []pdata.LogRecord {
 	buffer := make([]pdata.LogRecord, 2)
 	buffer[0] = pdata.NewLogRecord()
@@ -278,23 +288,6 @@ func exampleMultitypeLogs() []pdata.LogRecord {
 	return buffer
 }
 
-func exampleTrace() pdata.Traces {
-	td := pdata.NewTraces()
-	rs := td.ResourceSpans().AppendEmpty()
-	rs.Resource().Attributes().UpsertString("hostname", "testHost")
-	rs.Resource().Attributes().UpsertString("_sourceHost", "source_host")
-	rs.Resource().Attributes().UpsertString("_sourceName", "source_name")
-	rs.Resource().Attributes().UpsertString("_sourceCategory", "source_category")
-	span := rs.InstrumentationLibrarySpans().AppendEmpty().Spans().AppendEmpty()
-	span.SetTraceID(pdata.NewTraceID([16]byte{0x5B, 0x8E, 0xFF, 0xF7, 0x98, 0x3, 0x81, 0x3, 0xD2, 0x69, 0xB6, 0x33, 0x81, 0x3F, 0xC6, 0xC}))
-	span.SetSpanID(pdata.NewSpanID([8]byte{0xEE, 0xE1, 0x9B, 0x7E, 0xC3, 0xC1, 0xB1, 0x73}))
-	span.SetName("testSpan")
-	span.SetStartTimestamp(1544712660000000000)
-	span.SetEndTimestamp(1544712661000000000)
-	span.Attributes().UpsertInt("attr1", 55)
-	return td
-}
-
 func TestSendTrace(t *testing.T) {
 	tracesMarshaler = otlp.NewProtobufTracesMarshaler()
 	td := exampleTrace()
@@ -309,7 +302,7 @@ func TestSendTrace(t *testing.T) {
 		},
 	})
 
-	err = test.s.sendTraces(context.Background(), td, fieldsFromMap(map[string]string{}))
+	err = test.s.sendTraces(context.Background(), td)
 	assert.NoError(t, err)
 }
 
@@ -326,7 +319,7 @@ func TestSendLogs(t *testing.T) {
 
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "value", "key2": "value2"}))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "value", "key2": "value2"}))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, *test.reqCounter)
 }
@@ -344,7 +337,7 @@ func TestSendLogsWithEmptyField(t *testing.T) {
 
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "value", "key2": "value2", "service": ""}))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "value", "key2": "value2", "service": ""}))
 	assert.NoError(t, err)
 	assert.EqualValues(t, 1, *test.reqCounter)
 }
@@ -364,7 +357,7 @@ func TestSendLogsMultitype(t *testing.T) {
 
 	test.s.logBuffer = logRecordsToLogPair(exampleMultitypeLogs())
 
-	_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "value", "key2": "value2"}))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "value", "key2": "value2"}))
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, *test.reqCounter)
@@ -384,7 +377,7 @@ func TestSendLogsSplit(t *testing.T) {
 	test.s.config.MaxRequestBodySize = 10
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	_, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 2, *test.reqCounter)
@@ -413,7 +406,7 @@ func TestSendLogsSplitFailedOne(t *testing.T) {
 	test.s.config.LogFormat = TextFormat
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	dropped, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, "failed sending data: status: 500 Internal Server Error, id: 1TIRY-KGIVX-TPQRJ, errors: [{Code:internal.error Message:Internal server error.}]")
 	assert.Equal(t, test.s.logBuffer[0:1], dropped)
 
@@ -439,7 +432,7 @@ func TestSendLogsSplitFailedAll(t *testing.T) {
 	test.s.config.LogFormat = TextFormat
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	dropped, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(
 		t,
 		err,
@@ -568,7 +561,7 @@ func TestSendLogsJsonConfig(t *testing.T) {
 			test.s.config.LogFormat = JSONFormat
 			test.s.logBuffer = tc.logBuffer
 
-			_, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+			_, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 			assert.NoError(t, err)
 
 			assert.EqualValues(t, 1, *test.reqCounter)
@@ -594,7 +587,7 @@ func TestSendLogsJson(t *testing.T) {
 	test.s.config.LogFormat = JSONFormat
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key": "value"}))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key": "value"}))
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, *test.reqCounter)
@@ -618,7 +611,7 @@ func TestSendLogsJsonMultitype(t *testing.T) {
 	test.s.config.LogFormat = JSONFormat
 	test.s.logBuffer = logRecordsToLogPair(exampleMultitypeLogs())
 
-	_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key": "value"}))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key": "value"}))
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 1, *test.reqCounter)
@@ -643,7 +636,7 @@ func TestSendLogsJsonSplit(t *testing.T) {
 	test.s.config.MaxRequestBodySize = 10
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	_, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 2, *test.reqCounter)
@@ -672,7 +665,7 @@ func TestSendLogsJsonSplitFailedOne(t *testing.T) {
 	test.s.config.MaxRequestBodySize = 10
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	dropped, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, "failed sending data: status: 500 Internal Server Error")
 	assert.Equal(t, test.s.logBuffer[0:1], dropped)
 
@@ -704,7 +697,7 @@ func TestSendLogsJsonSplitFailedAll(t *testing.T) {
 	test.s.config.MaxRequestBodySize = 10
 	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 
-	dropped, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(
 		t,
 		err,
@@ -724,7 +717,7 @@ func TestSendLogsUnexpectedFormat(t *testing.T) {
 	logs := logRecordsToLogPair(exampleTwoLogs())
 	test.s.logBuffer = logs
 
-	dropped, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.Error(t, err)
 	assert.Equal(t, logs, dropped)
 }
@@ -734,19 +727,37 @@ func TestSendLogsOTLP(t *testing.T) {
 		func(w http.ResponseWriter, req *http.Request) {
 			body := extractBody(t, req)
 			//nolint:lll
-			assert.Equal(t, "\n\xe2\x01\nb\n\x1c\n\v_sourceHost\x12\r\n\vsource_host\n\x1c\n\v_sourceName\x12\r\n\vsource_name\n$\n\x0f_sourceCategory\x12\x11\n\x0fsource_category\x12|\n\x00\x127*\r\n\vExample log2\x10\n\x04key1\x12\b\n\x06value12\x10\n\x04key2\x12\b\n\x06value2J\x00R\x00\x12?*\x15\n\x13Another example log2\x10\n\x04key1\x12\b\n\x06value12\x10\n\x04key2\x12\b\n\x06value2J\x00R\x00", body)
-			assert.Equal(t, "key1=value, key2=value2", req.Header.Get("X-Sumo-Fields"))
+			assert.Equal(t, "\n\xe6\x01\nb\n\x1c\n\v_sourceHost\x12\r\n\vsource_host\n\x1c\n\v_sourceName\x12\r\n\vsource_name\n$\n\x0f_sourceCategory\x12\x11\n\x0fsource_category\x12;\n\x00\x127*\r\n\vExample log2\x10\n\x04key1\x12\b\n\x06value12\x10\n\x04key2\x12\b\n\x06value2J\x00R\x00\x12C\n\x00\x12?*\x15\n\x13Another example log2\x10\n\x04key1\x12\b\n\x06value12\x10\n\x04key2\x12\b\n\x06value2J\x00R\x00", body)
+
 			assert.Equal(t, "otelcol", req.Header.Get("X-Sumo-Client"))
 			assert.Equal(t, "application/x-protobuf", req.Header.Get("Content-Type"))
+
+			assert.Empty(t, req.Header.Get("X-Sumo-Fields"),
+				"We should not get X-Sumo-Fields header when sending data with OTLP",
+			)
+			assert.Empty(t, req.Header.Get("X-Sumo-Category"),
+				"We should not get X-Sumo-Category header when sending data with OTLP",
+			)
+			assert.Empty(t, req.Header.Get("X-Sumo-Name"),
+				"We should not get X-Sumo-Name header when sending data with OTLP",
+			)
+			assert.Empty(t, req.Header.Get("X-Sumo-Host"),
+				"We should not get X-Sumo-Host header when sending data with OTLP",
+			)
 		},
 	})
 
-	test.s.logBuffer = logRecordsToLogPair(exampleTwoLogs())
 	test.s.config.LogFormat = "otlp"
 
-	_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "value", "key2": "value2"}))
-	assert.NoError(t, err)
+	l := pdata.NewLogs()
+	ls := l.ResourceLogs().AppendEmpty()
 
+	logRecords := exampleTwoLogs()
+	for i := 0; i < len(logRecords); i++ {
+		logRecords[i].MoveTo(ls.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty())
+	}
+
+	assert.NoError(t, test.s.sendOTLPLogs(context.Background(), l))
 	assert.EqualValues(t, 1, *test.reqCounter)
 }
 
@@ -761,7 +772,7 @@ func TestOverrideSourceName(t *testing.T) {
 		test.s.sources.name = getTestSourceFormat(t, "Test source name/%{key1}")
 		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, 1, *test.reqCounter)
@@ -779,7 +790,7 @@ func TestOverrideSourceName(t *testing.T) {
 		test.s.sources.name = getTestSourceFormat(t, "Test source name/%{key1}")
 		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, 1, *test.reqCounter)
@@ -803,12 +814,15 @@ func TestOverrideSourceName(t *testing.T) {
 		})
 
 		test.s.sources.name = getTestSourceFormat(t, "Test source name/%{key1}")
-		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
-		assert.NoError(t, err)
-
-		assert.EqualValues(t, 1, *test.reqCounter)
+		l := pdata.NewLogs()
+		ls := l.ResourceLogs().AppendEmpty()
+		ls.Resource().Attributes().InsertString("key1", "test_name")
+		logRecords := exampleTwoLogs()
+		for i := 0; i < len(logRecords); i++ {
+			logRecords[i].MoveTo(ls.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty())
+		}
+		assert.NoError(t, test.s.sendOTLPLogs(context.Background(), l))
 	})
 }
 
@@ -823,7 +837,7 @@ func TestOverrideSourceCategory(t *testing.T) {
 		test.s.sources.category = getTestSourceFormat(t, "Test source category/%{key1}")
 		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
 		assert.NoError(t, err)
 	})
 
@@ -839,7 +853,7 @@ func TestOverrideSourceCategory(t *testing.T) {
 		test.s.sources.category = getTestSourceFormat(t, "Test source category/%{key1}")
 		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, 1, *test.reqCounter)
@@ -863,10 +877,15 @@ func TestOverrideSourceCategory(t *testing.T) {
 		})
 
 		test.s.sources.category = getTestSourceFormat(t, "Test source category/%{key1}")
-		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
-		assert.NoError(t, err)
+		l := pdata.NewLogs()
+		ls := l.ResourceLogs().AppendEmpty()
+		ls.Resource().Attributes().InsertString("key1", "test_name")
+		logRecords := exampleTwoLogs()
+		for i := 0; i < len(logRecords); i++ {
+			logRecords[i].MoveTo(ls.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty())
+		}
+		assert.NoError(t, test.s.sendOTLPLogs(context.Background(), l))
 	})
 }
 
@@ -881,7 +900,7 @@ func TestOverrideSourceHost(t *testing.T) {
 		test.s.sources.host = getTestSourceFormat(t, "Test source host/%{key1}")
 		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
 		assert.NoError(t, err)
 	})
 
@@ -897,7 +916,7 @@ func TestOverrideSourceHost(t *testing.T) {
 		test.s.sources.host = getTestSourceFormat(t, "Test source host/%{key1}")
 		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, 1, *test.reqCounter)
@@ -921,10 +940,15 @@ func TestOverrideSourceHost(t *testing.T) {
 		})
 
 		test.s.sources.host = getTestSourceFormat(t, "Test source host/%{key1}")
-		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(map[string]string{"key1": "test_name"}))
-		assert.NoError(t, err)
+		l := pdata.NewLogs()
+		ls := l.ResourceLogs().AppendEmpty()
+		ls.Resource().Attributes().InsertString("key1", "test_name")
+		logRecords := exampleTwoLogs()
+		for i := 0; i < len(logRecords); i++ {
+			logRecords[i].MoveTo(ls.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty())
+		}
+		assert.NoError(t, test.s.sendOTLPLogs(context.Background(), l))
 	})
 }
 
@@ -980,7 +1004,7 @@ func TestLogsDontSendSourceFieldsInXSumoFieldsHeader(t *testing.T) {
 		test.s.sources.category = getTestSourceFormat(t, "Test source category/%{key1}")
 		test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(
 			map[string]string{
 				"key1":            "key1_val",
 				"_sourceName":     "test_source_name",
@@ -1020,7 +1044,7 @@ func TestLogsHandlesReceiverResponses(t *testing.T) {
 			),
 		)
 
-		_, err := test.s.sendLogs(context.Background(), fieldsFromMap(
+		_, err := test.s.sendNonOTLPLogs(context.Background(), fieldsFromMap(
 			map[string]string{
 				"cluster":         "abcaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"code":            "4222222222222222222222222222222222222222222222222222222222222222222222222222222222222",
@@ -1116,7 +1140,7 @@ func TestInvalidEndpoint(t *testing.T) {
 	test.s.config.HTTPClientSettings.Endpoint = ":"
 	test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-	_, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, `parse ":": missing protocol scheme`)
 }
 
@@ -1126,7 +1150,7 @@ func TestInvalidPostRequest(t *testing.T) {
 	test.s.config.HTTPClientSettings.Endpoint = ""
 	test.s.logBuffer = logRecordsToLogPair(exampleLog())
 
-	_, err := test.s.sendLogs(context.Background(), newFields(pdata.NewAttributeMap()))
+	_, err := test.s.sendNonOTLPLogs(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, `Post "": unsupported protocol scheme ""`)
 }
 
@@ -1152,14 +1176,14 @@ func TestInvalidMetricFormat(t *testing.T) {
 
 	test.s.config.MetricFormat = "invalid"
 
-	err := test.s.send(context.Background(), MetricsPipeline, strings.NewReader(""), newFields(pdata.NewAttributeMap()))
+	err := test.s.send(context.Background(), MetricsPipeline, newCountingReader(0).withString(""), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, `unsupported metrics format: invalid`)
 }
 
 func TestInvalidPipeline(t *testing.T) {
 	test := prepareSenderTest(t, []func(w http.ResponseWriter, req *http.Request){})
 
-	err := test.s.send(context.Background(), "invalidPipeline", strings.NewReader(""), newFields(pdata.NewAttributeMap()))
+	err := test.s.send(context.Background(), "invalidPipeline", newCountingReader(0).withString(""), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, `unexpected pipeline: invalidPipeline`)
 }
 
@@ -1184,7 +1208,7 @@ func TestSendCompressGzip(t *testing.T) {
 	require.NoError(t, err)
 
 	test.s.compressor = c
-	reader := strings.NewReader("Some example log")
+	reader := newCountingReader(0).withString("Some example log")
 
 	err = test.s.send(context.Background(), LogsPipeline, reader, newFields(pdata.NewAttributeMap()))
 	require.NoError(t, err)
@@ -1212,7 +1236,7 @@ func TestSendCompressDeflate(t *testing.T) {
 	require.NoError(t, err)
 
 	test.s.compressor = c
-	reader := strings.NewReader("Some example log")
+	reader := newCountingReader(0).withString("Some example log")
 
 	err = test.s.send(context.Background(), LogsPipeline, reader, newFields(pdata.NewAttributeMap()))
 	require.NoError(t, err)
@@ -1222,7 +1246,7 @@ func TestCompressionError(t *testing.T) {
 	test := prepareSenderTest(t, []func(w http.ResponseWriter, req *http.Request){})
 
 	test.s.compressor = getTestCompressor(errors.New("read error"), nil)
-	reader := strings.NewReader("Some example log")
+	reader := newCountingReader(0).withString("Some example log")
 
 	err := test.s.send(context.Background(), LogsPipeline, reader, newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, "read error")
@@ -1232,7 +1256,7 @@ func TestInvalidContentEncoding(t *testing.T) {
 	test := prepareSenderTest(t, []func(w http.ResponseWriter, req *http.Request){})
 
 	test.s.config.CompressEncoding = "test"
-	reader := strings.NewReader("Some example log")
+	reader := newCountingReader(0).withString("Some example log")
 
 	err := test.s.send(context.Background(), LogsPipeline, reader, newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, "invalid content encoding: test")
@@ -1260,7 +1284,7 @@ gauge_metric_name{foo="bar",remote_name="156955",url="http://another_url"} 245 1
 		exampleIntMetric(),
 		exampleIntGaugeMetric(),
 	}
-	_, err := test.s.sendMetrics(context.Background(), flds)
+	_, err := test.s.sendNonOTLPMetrics(context.Background(), flds)
 	assert.NoError(t, err)
 }
 
@@ -1285,7 +1309,7 @@ gauge_metric_name{foo="bar",remote_name="156955",url="http://another_url"} 245 1
 		exampleIntGaugeMetric(),
 	}
 
-	_, err := test.s.sendMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
+	_, err := test.s.sendNonOTLPMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.NoError(t, err)
 }
 
@@ -1312,7 +1336,7 @@ gauge_metric_name{foo="bar",remote_name="156955",url="http://another_url"} 245 1
 		exampleIntGaugeMetric(),
 	}
 
-	dropped, err := test.s.sendMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, "failed sending data: status: 500 Internal Server Error")
 	assert.Equal(t, test.s.metricBuffer[0:1], dropped)
 }
@@ -1342,7 +1366,7 @@ gauge_metric_name{foo="bar",remote_name="156955",url="http://another_url"} 245 1
 		exampleIntGaugeMetric(),
 	}
 
-	dropped, err := test.s.sendMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(
 		t,
 		err,
@@ -1362,7 +1386,7 @@ func TestSendMetricsUnexpectedFormat(t *testing.T) {
 	}
 	test.s.metricBuffer = metrics
 
-	dropped, err := test.s.sendMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
+	dropped, err := test.s.sendNonOTLPMetrics(context.Background(), newFields(pdata.NewAttributeMap()))
 	assert.EqualError(t, err, "unexpected metric format: invalid")
 	assert.Equal(t, dropped, metrics)
 }
@@ -1442,7 +1466,7 @@ foo=bar metric=gauge_metric_name  245 1608124662`
 	test.s.metricBuffer[0].attributes.InsertString("escape me", "=invalid\n")
 	test.s.metricBuffer[0].attributes.InsertBool("metric", true)
 
-	_, err := test.s.sendMetrics(context.Background(), flds)
+	_, err := test.s.sendNonOTLPMetrics(context.Background(), flds)
 	assert.NoError(t, err)
 }
 
@@ -1477,6 +1501,6 @@ gauge_metric_name.. 245 1608124662`
 	test.s.metricBuffer[0].attributes.InsertString("unit", "m/s")
 	test.s.metricBuffer[0].attributes.InsertBool("metric", true)
 
-	_, err = test.s.sendMetrics(context.Background(), flds)
+	_, err = test.s.sendNonOTLPMetrics(context.Background(), flds)
 	assert.NoError(t, err)
 }

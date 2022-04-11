@@ -71,6 +71,11 @@ type Config struct {
 	// List of regexes for attributes which should be send as metadata
 	MetadataAttributes []string `mapstructure:"metadata_attributes"`
 
+	// Attribute used by routingprocessor which should be dropped during data ingestion
+	// This is workaround for the following issue:
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/7407
+	DropRoutingAttribute string `mapstructure:"routing_atttribute_to_drop"`
+
 	// Sumo specific options
 	// Desired source category.
 	// Useful if you want to override the source category configured for the source.
@@ -150,12 +155,8 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("unexpected trace format: %s", cfg.TraceFormat)
 	}
 
-	switch cfg.CompressEncoding {
-	case GZIPCompression:
-	case DeflateCompression:
-	case NoCompression:
-	default:
-		return fmt.Errorf("unexpected compression encoding: %s", cfg.CompressEncoding)
+	if err := cfg.CompressEncoding.Validate(); err != nil {
+		return err
 	}
 
 	if len(cfg.HTTPClientSettings.Endpoint) == 0 && cfg.HTTPClientSettings.Auth == nil {
@@ -189,6 +190,19 @@ type PipelineType string
 
 // CompressEncodingType represents type of the pipeline
 type CompressEncodingType string
+
+func (cet CompressEncodingType) Validate() error {
+	switch cet {
+	case GZIPCompression:
+	case NoCompression:
+	case DeflateCompression:
+
+	default:
+		return fmt.Errorf("invalid compression encoding type: %v", cet)
+	}
+
+	return nil
+}
 
 const (
 	// TextFormat represents log_format: text
@@ -255,4 +269,6 @@ const (
 	DefaultTimestampKey string = "timestamp"
 	// DefaultFlattenBody defines default FlattenBody value
 	DefaultFlattenBody bool = false
+	// DefaultDropRoutingAttribute defines default DropRoutingAttribute
+	DefaultDropRoutingAttribute string = ""
 )

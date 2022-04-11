@@ -8,6 +8,11 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
 
+      - 'v[0-9]+.[0-9]+.[0-9]+-sumo-[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-sumo-[0-9]+-alpha.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-sumo-[0-9]+-beta.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-sumo-[0-9]+-rc.[0-9]+'
+
 jobs:
 
   build:
@@ -27,7 +32,7 @@ jobs:
         run: ./ci/fetch_current_branch.sh
 
       - name: Setup go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: '1.18'
 
@@ -76,7 +81,7 @@ jobs:
           tee otelcol-sumo-${{matrix.arch_os}}_modules.txt
 
       - name: Store binary as action artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{matrix.arch_os}}
           path: ./otelcolbuilder/cmd/${{ steps.set_filename.outputs.filename }}
@@ -97,7 +102,7 @@ jobs:
         run: ./ci/fetch_current_branch.sh
 
       - name: Setup go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: '1.18'
 
@@ -179,14 +184,14 @@ jobs:
       # Store binary and .dmg into pipeline artifacts after they have been signed
 
       - name: Store .dmg as action artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{matrix.arch_os}}.dmg
           path: ./otelcolbuilder/cmd/${{ steps.set_filename.outputs.filename }}.dmg
           if-no-files-found: error
 
       - name: Store binary as action artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{matrix.arch_os}}
           path: ./otelcolbuilder/cmd/${{ steps.set_filename.outputs.filename }}
@@ -221,7 +226,7 @@ jobs:
         run: echo ${{ steps.buildx.outputs.platforms }}
 
       - name: Download binary action artifact from build phase
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: ${{matrix.arch_os}}
           path: artifacts/
@@ -300,7 +305,7 @@ jobs:
         run: echo "v${{ steps.extract_tag.outputs.tag }}"
 
       - name: Download all binaries stored as artifact
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           path: artifacts/
 
@@ -309,6 +314,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: true
+
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+
           body: |
             ## v${{ steps.extract_tag.outputs.tag }}
 

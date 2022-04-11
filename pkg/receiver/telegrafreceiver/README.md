@@ -8,8 +8,6 @@ Supported pipeline types: metrics
 Use case: user configures telegraf input plugins in config for ingestion and otc
 processors and exporters for data processing and export.
 
-> :construction: This receiver is currently in **BETA** and is considered **unstable**.
-
 [input_plugins]: https://github.com/SumoLogic/telegraf/tree/v1.21.3-sumo-2/plugins/inputs
 
 ## Configuration
@@ -25,6 +23,11 @@ The Following settings are optional:
 
 - `separate_field` (default value is `false`): Specify whether metric field
   should be added separately as data point label.
+- `consume_retry_delay` (default value is `500ms`): The retry delay for recoverable
+  errors from the rest of the pipeline. Don't change this or the related setting below
+  unless you know what you're doing.
+- `consume_max_retries` (default value is `10`): The maximum number of retries for recoverable
+  errors from the rest of the pipeline.
 
 Example:
 
@@ -254,4 +257,4 @@ service:
 
 [prometheus_data_model]: https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
 [sumologic_output_plugin]: https://github.com/influxdata/telegraf/tree/master/plugins/outputs/sumologic
-[metricstransformprocessor]: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/v0.47.0/processor/metricstransformprocessor
+[metricstransformprocessor]: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/v0.48.0/processor/metricstransformprocessor

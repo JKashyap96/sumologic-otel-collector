@@ -8,6 +8,7 @@ the container images stored in AWS Public ECR under the following repository:
   - [Linux on amd64 (x86-64)](#linux-on-amd64-x86-64)
   - [Linux on arm64](#linux-on-arm64)
   - [MacOS on amd64 (x86-64)](#macos-on-amd64-x86-64)
+  - [MacOS on arm64 (Apple M1)](#macos-on-arm64-apple-m1-x86-64)
   - [Upgrading standalone installation](#upgrading-standalone-installation)
 - [Container image](#container-image)
 - [Systemd service](#systemd-service)
@@ -28,7 +29,7 @@ Follow the steps for your platform below.
 1. Download the release binary:
 
     ```bash
-    curl -sLo otelcol-sumo "https://github.com/SumoLogic/sumologic-otel-collector/releases/download/v0.0.52-beta.0/otelcol-sumo-0.0.52-beta.0-linux_amd64"
+    curl -sLo otelcol-sumo "https://github.com/SumoLogic/sumologic-otel-collector/releases/download/v0.47.0-sumo-0/otelcol-sumo-0.47.0-sumo-0-linux_amd64"
     ```
 
 1. Install the release binary in your `PATH`:
@@ -65,7 +66,7 @@ Follow the steps for your platform below.
 1. Download the release binary:
 
     ```bash
-    curl -sLo otelcol-sumo "https://github.com/SumoLogic/sumologic-otel-collector/releases/download/v0.0.52-beta.0/otelcol-sumo-0.0.52-beta.0-linux_arm64"
+    curl -sLo otelcol-sumo "https://github.com/SumoLogic/sumologic-otel-collector/releases/download/v0.47.0-sumo-0/otelcol-sumo-0.47.0-sumo-0-linux_arm64"
     ```
 
 1. Install the release binary in your `PATH`:
@@ -102,7 +103,7 @@ Follow the steps for your platform below.
 1. Download the release binary:
 
     ```bash
-    curl -sLo otelcol-sumo "https://github.com/SumoLogic/sumologic-otel-collector/releases/download/v0.0.52-beta.0/otelcol-sumo-0.0.52-beta.0-darwin_amd64"
+    curl -sLo otelcol-sumo "https://github.com/SumoLogic/sumologic-otel-collector/releases/download/v0.47.0-sumo-0/otelcol-sumo-0.47.0-sumo-0-darwin_amd64"
     ```
 
 1. Install the release binary in your `PATH`:
@@ -134,6 +135,10 @@ Follow the steps for your platform below.
    otelcol-sumo --config config.yaml
    ```
 
+### MacOS on arm64 (Apple M1) (x86-64)
+
+This is currently not a supported platform. Manually building for it might work, but we haven't tested it.
+
 ### Upgrading standalone installation
 
 To upgrade, simply perform the above installation steps again,
@@ -154,7 +159,7 @@ repository.
 1. Set the release version variable:
 
    ```bash
-   export RELEASE_VERSION=0.0.52-beta.0
+   export RELEASE_VERSION=0.47.0-sumo-0
    ```
 
 1. Prepare the configuration according to [this](Configuration.md) document and save it in `config.yaml`.
