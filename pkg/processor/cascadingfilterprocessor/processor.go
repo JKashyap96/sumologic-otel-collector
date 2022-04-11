@@ -680,17 +680,29 @@ func (cfsp *cascadingFilterSpanProcessor) processTraces(ctx context.Context, res
 				cfsp.logger.Warn("Error sending late arrived spans to destination",
 					zap.Error(err))
 			}
-			err := stats.RecordWithTags(cfsp.ctx, []tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)}, statLateSpanArrivalAfterDecision.M(int64(time.Since(actualData.DecisionTime)/time.Second)))
+			err := stats.RecordWithTags(
+				cfsp.ctx,
+				[]tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)},
+				statLateSpanArrivalAfterDecision.M(int64(time.Since(actualData.DecisionTime)/time.Second)),
+			)
 			if err != nil {
 				cfsp.logger.Error("failed to record metrics", zap.Error(err))
 			}
 		case sampling.NotSampled:
-			err := stats.RecordWithTags(cfsp.ctx, []tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)}, statLateSpanArrivalAfterDecision.M(int64(time.Since(actualData.DecisionTime)/time.Second)))
+			err := stats.RecordWithTags(
+				cfsp.ctx,
+				[]tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)},
+				statLateSpanArrivalAfterDecision.M(int64(time.Since(actualData.DecisionTime)/time.Second)),
+			)
 			if err != nil {
 				cfsp.logger.Error("failed to record metrics", zap.Error(err))
 			}
 		case sampling.Dropped:
-			err := stats.RecordWithTags(cfsp.ctx, []tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)}, statLateSpanArrivalAfterDecision.M(int64(time.Since(actualData.DecisionTime)/time.Second)))
+			err := stats.RecordWithTags(
+				cfsp.ctx,
+				[]tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)},
+				statLateSpanArrivalAfterDecision.M(int64(time.Since(actualData.DecisionTime)/time.Second)),
+			)
 			if err != nil {
 				cfsp.logger.Error("failed to record metrics", zap.Error(err))
 			}
@@ -700,7 +712,11 @@ func (cfsp *cascadingFilterSpanProcessor) processTraces(ctx context.Context, res
 		}
 	}
 
-	err := stats.RecordWithTags(cfsp.ctx, []tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)}, statNewTraceIDReceivedCount.M(newTraceIDs))
+	err := stats.RecordWithTags(
+		cfsp.ctx,
+		[]tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)},
+		statNewTraceIDReceivedCount.M(newTraceIDs),
+	)
 	if err != nil {
 		cfsp.logger.Error("failed to record metrics", zap.Error(err))
 	}
@@ -737,7 +753,11 @@ func (cfsp *cascadingFilterSpanProcessor) dropTrace(traceID traceKey, deletionTi
 		return
 	}
 
-	err := stats.RecordWithTags(cfsp.ctx, []tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)}, statTraceRemovalAgeSec.M(int64(deletionTime.Sub(trace.ArrivalTime)/time.Second)))
+	err := stats.RecordWithTags(
+		cfsp.ctx,
+		[]tag.Mutator{tag.Insert(tagProcessorKey, cfsp.instanceName)},
+		statTraceRemovalAgeSec.M(int64(deletionTime.Sub(trace.ArrivalTime)/time.Second)),
+	)
 	if err != nil {
 		cfsp.logger.Error("failed to record metrics", zap.Error(err))
 	}
