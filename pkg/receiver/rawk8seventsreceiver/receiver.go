@@ -194,13 +194,12 @@ func (r *rawK8sEventsReceiver) convertToLog(event *corev1.Event) pdata.Logs {
 	sl := rl.ScopeLogs().AppendEmpty()
 	lr := sl.LogRecords().AppendEmpty()
 
+	// Convert the event into a map[string][interface{}]
 	unstructuredObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(event)
 	if err != nil {
-		r.logger.Error("failed to marshal event", zap.Error(err), zap.Any("event", event))
+		r.logger.Error("failed to convert event", zap.Error(err), zap.Any("event", event))
 	}
 	eventAttributeMap := pdata.NewMapFromRaw(unstructuredObj)
-
-	// Attributes related to the object causing the event.
 
 	lr.SetTimestamp(pdata.NewTimestampFromTime(getEventTimestamp(event)))
 

@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
+	k8s "k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -50,17 +51,29 @@ func createDefaultConfig() config.Receiver {
 }
 
 func createLogsReceiver(
-	_ context.Context,
+	ctx context.Context,
 	params component.ReceiverCreateSettings,
 	cfg config.Receiver,
 	consumer consumer.Logs,
 ) (component.LogsReceiver, error) {
+
+	k8sClientFactory := MakeClient
+	return createLogsReceiverWithClient(ctx, params, cfg, consumer, k8sClientFactory)
+}
+
+func createLogsReceiverWithClient(
+	_ context.Context,
+	params component.ReceiverCreateSettings,
+	cfg config.Receiver,
+	consumer consumer.Logs,
+	clientFactory func(APIConfig) (k8s.Interface, error),
+) (component.LogsReceiver, error) {
 	rCfg := cfg.(*Config)
 
-	k8sInterface, err := MakeClient(rCfg.APIConfig)
+	k8sClient, err := clientFactory(rCfg.APIConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	return newRawK8sEventsReceiver(params, rCfg, consumer, k8sInterface, nil)
+	return newRawK8sEventsReceiver(params, rCfg, consumer, k8sClient, nil)
 }
